@@ -1102,17 +1102,163 @@
 
     <script>
         // ============ DATOS DE USUARIO SIMULADOS ============
-        let usuarioActual = null;
-        function obtenerUsuarios() {
-            try {
-                return JSON.parse(localStorage.getItem('ancla_usuarios')) || {};
-            } catch (e) {
-                return {};
+        // ============ CONFIGURACIÓN DE SUPABASE ============
+// ⚠️ PEGA AQUÍ TUS DATOS REALES DE SUPABASE
+const SUPABASE_URL = 'https://oyncsuwelshqdjjukvia.supabase.co/';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im95bmNzdXdlbHNocWRqanVrdmlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MDk3NDQsImV4cCI6MjA5NzE4NTc0NH0.wbnMMbBspfX0lLB65hvYhjZ-sfxCSfvd6_T87OKq28Q';
+
+// Inicializar Supabase
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Variable global para el usuario actual
+let usuarioActual = null;
+
+// ============ VERIFICAR SESIÓN AL CARGAR ============
+async function verificarSesion() {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (session && session.user) {
+        // Ya hay sesión activa
+        usuarioActual = {
+            email: session.user.email,
+            nombre: session.user.user_metadata?.nombre || 'Usuario',
+            edad: session.user.user_metadata?.edad || '',
+        };
+        abrirDashboard();
+    } else {
+        // Mostrar pantalla de login
+        document.getElementById('authContainer').style.display = 'flex';
+        document.getElementById('dashboard').classList.remove('active');
+    }
+}
+
+// ============ REGISTRO CON SUPABASE ============
+async function registrar() {
+    const name = document.getElementById('regName').value.trim();
+    const email = document.getElementById('regEmail').value.trim();
+    const pass = document.getElementById('regPass').value.trim();
+    const age = document.getElementById('regAge').value.trim();
+    const msgEl = document.getElementById('regMsg');
+
+    // Validaciones
+    if (!name || !email || !pass || !age) {
+        msgEl.textContent = 'Completa todos los campos.';
+        msgEl.className = 'auth-msg error';
+        return;
+    }
+    if (pass.length < 6) {
+        msgEl.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+        msgEl.className = 'auth-msg error';
+        return;
+    }
+
+    // Registrar en Supabase
+    const { data, error } = await supabase.auth.signUp({
+        email: email,
+        password: pass,
+        options: {
+            data: {
+                nombre: name,
+                edad: parseInt(age),
             }
         }
-        function guardarUsuarios(usuarios) {
-            localStorage.setItem('ancla_usuarios', JSON.stringify(usuarios));
-        }
+    });
+
+    if (error) {
+        msgEl.textContent = error.message;
+        msgEl.className = 'auth-msg error';
+    } else if (data?.user?.identities?.length === 0) {
+        msgEl.textContent = 'Este correo ya está registrado. Inicia sesión.';
+        msgEl.className = 'auth-msg error';
+    } else {
+        msgEl.textContent = '✅ Registro exitoso. Ahora inicia sesión.';
+        msgEl.className = 'auth-msg success';
+        // Limpiar campos
+        document.getElementById('regName').value = '';
+        document.getElementById('regPass').value = '';
+        document.getElementById('regAge').value = '';
+        document.getElementById('regEmail').value = '';
+        // Cambiar a login después de 1.5 segundos
+        setTimeout(() => toggleAuth('login'), 1500);
+    }
+}
+
+// ============ INICIAR SESIÓN CON SUPABASE ============
+async function iniciarSesion() {
+    const email = document.getElementById('loginUser').value.trim();
+    const pass = document.getElementById('loginPass').value.trim();
+    const msgEl = document.getElementById('loginMsg');
+
+    if (!email || !pass) {
+        msgEl.textContent = 'Ingresa usuario y contraseña.';
+        msgEl.className = 'auth-msg error';
+        return;
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: pass,
+    });
+
+    if (error) {
+        msgEl.textContent = 'Error: ' + error.message;
+        msgEl.className = 'auth-msg error';
+    } else if (data?.user) {
+        usuarioActual = {
+            email: data.user.email,
+            nombre: data.user.user_metadata?.nombre || 'Usuario',
+            edad: data.user.user_metadata?.edad || '',
+        };
+        abrirDashboard();
+    }
+}
+
+// ============ CERRAR SESIÓN ============
+async function cerrarSesion() {
+    await supabase.auth.signOut();
+    usuarioActual = null;
+    document.getElementById('dashboard').classList.remove('active');
+    document.getElementById('authContainer').style.display = 'flex';
+    document.getElementById('loginUser').value = '';
+    document.getElementById('loginPass').value = '';
+    document.getElementById('loginMsg').textContent = '';
+    // Resetear secciones
+    document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-estadisticas').classList.add('active');
+    document.querySelectorAll('.sidebar nav a').forEach(a => a.classList.remove('active'));
+    const statsLink = document.querySelector('.sidebar nav a[data-section="estadisticas"]');
+    if (statsLink) statsLink.classList.add('active');
+}
+
+// ============ AL INICIAR LA PÁGINA ============
+document.addEventListener('DOMContentLoaded', () => {
+    verificarSesion(); // Verifica si hay sesión activa
+});
+📋 CAMBIOS EN EL HTML (IMPORTANTE)
+En el formulario de Login, cambia el placeholder del campo de usuario:
+
+html
+<!-- ANTES -->
+<input type="text" id="loginUser" placeholder="Nombre de usuario">
+
+<!-- AHORA -->
+<input type="email" id="loginUser" placeholder="Correo electrónico">
+O si prefieres mantener el placeholder como "Nombre de usuario o correo":
+
+html
+<input type="text" id="loginUser" placeholder="Correo electrónico">
+🎯 RESUMEN VISUAL DE LO QUE DEBES HACER
+Elemento	Acción
+localStorage.getItem('ancla_usuarios')	ELIMINAR
+obtenerUsuarios()	ELIMINAR
+guardarUsuarios()	ELIMINAR
+function registrar() vieja	REEMPLAZAR por la nueva
+function iniciarSesion() vieja	REEMPLAZAR por la nueva
+function cerrarSesion()	MODIFICAR (agregar async y await supabase.auth.signOut())
+Campo #loginUser en HTML	Cambiar placeholder a "Correo electrónico"
+Agregar script de Supabase	<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+¿Quieres que te pase el archivo HTML completo ya modificado con todos estos cambios? Así solo copias, pegas y cambias las credenciales de Supabase.
+
+
 
         // ============ MOSTRAR/OCULTAR CONTRASEÑA ============
         function togglePassword(inputId, icon) {
